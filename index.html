@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Content Master Calendar</title>
+
+<!-- Tailwind via CDN (for quick deploy on GitHub Pages) -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Icons -->
+<link href="https://unpkg.com/lucide-static@latest/font/lucide.css" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#0f1220;        /* page background */
+    --panel:#161a2b;     /* cards/panels */
+    --panel-2:#1d2238;   /* hover/alt */
+    --muted:#8b90a7;     /* text muted */
+    --text:#e7e9f5;      /* text */
+    --brand:#7dd3fc;     /* cyan */
+    --brand-2:#c084fc;   /* violet */
+    --accent:#22d3ee;    /* cyan bright */
+    --ok:#34d399;        /* green */
+    --warn:#fbbf24;      /* amber */
+    --bad:#fb7185;       /* rose */
+  }
+  html,body{height:100%}
+  body{background:var(--bg); color:var(--text);}
+
+  /* scrollbars */
+  ::-webkit-scrollbar{height:10px;width:10px}
+  ::-webkit-scrollbar-thumb{background:#2a3151;border-radius:8px}
+
+  /* small badge dots */
+  .dot{display:inline-block;width:8px;height:8px;border-radius:9999px;margin-right:.5rem}
+
+  /* Calendar grid */
+  .cal-grid{
+    display:grid;
+    grid-template-columns: repeat(7,minmax(0,1fr));
+    gap:.5rem;
+  }
+  .cal-cell{
+    background:var(--panel);
+    border-radius:.75rem;
+    min-height:100px;
+    padding:.5rem;
+  }
+  .cal-cell .d{
+    color:var(--muted);
+    font-size:.75rem;
+  }
+  .pill{
+    display:inline-flex;align-items:center;gap:.4rem;
+    padding:.18rem .5rem;border-radius:999px;
+    font-size:.72rem;font-weight:600;white-space:nowrap
+  }
+  .pill.cyan{background:rgba(34,211,238,.12); color:#67e8f9; border:1px solid rgba(34,211,238,.3)}
+  .pill.violet{background:rgba(192,132,252,.12); color:#e9d5ff; border:1px solid rgba(192,132,252,.3)}
+  .pill.green{background:rgba(52,211,153,.12); color:#bbf7d0; border:1px solid rgba(52,211,153,.3)}
+  .pill.rose{background:rgba(251,113,133,.12); color:#fecdd3; border:1px solid rgba(251,113,133,.3)}
+  .pill.amber{background:rgba(251,191,36,.12); color:#fde68a; border:1px solid rgba(251,191,36,.3)}
+
+  .tab-btn[aria-selected="true"]{
+    background:linear-gradient(135deg, rgba(125,211,252,.18), rgba(192,132,252,.18));
+    border-color: rgba(125,211,252,.35);
+  }
+
+  .card{background:var(--panel); border:1px solid #212846; border-radius:1rem}
+  .card:hover{border-color:#2a3158}
+
+  .kan-col{background:var(--panel); border:1px dashed #2a3158; border-radius:1rem}
+  .kan-item{background:var(--panel-2); border:1px solid #2a3158; border-radius:.875rem}
+
+  .tooltip{position:relative}
+  .tooltip:after{
+    content: attr(data-tip); position:absolute; z-index:40; bottom:calc(100% + .4rem);
+    left:50%; transform:translateX(-50%); white-space:nowrap;
+    background:#0b0f1e; color:#cfd3ea; border:1px solid #2a3158;
+    padding:.25rem .5rem; border-radius:.5rem; opacity:0; pointer-events:none; transition:.16s;
+    font-size:.72rem
+  }
+  .tooltip:hover:after{opacity:1}
+</style>
+</head>
+<body class="antialiased">
+  <!-- Header -->
+  <header class="sticky top-0 z-30 backdrop-blur supports-[backdrop-filter]:bg-transparent bg-[rgba(15,18,32,.65)] border-b border-[#1e2443]">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-xl bg-gradient-to-br from-cyan-400/40 to-fuchsia-400/40 ring-1 ring-cyan-300/30 grid place-items-center">
+          <i class="lucide-layout-dashboard text-cyan-200"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-semibold tracking-wide">Content Master Calendar</h1>
+          <p class="text-[13px] text-[var(--muted)]">Kanban • Calendar • Table — demo (localStorage)</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="btn-export" class="px-3 py-2 rounded-lg border border-[#2a3158] text-[13px] hover:bg-[#171b2e]">Export JSON</button>
+        <label class="px-3 py-2 rounded-lg border border-[#2a3158] text-[13px] hover:bg-[#171b2e] cursor-pointer">
+          Import JSON <input id="import-file" type="file" accept="application/json" class="hidden">
+        </label>
+        <button id="btn-new" class="px-3 py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-300/40 text-cyan-100 text-[13px]">
+          <i class="lucide-plus mr-1"></i>New
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="max-w-7xl mx-auto px-4 pb-3">
+      <div class="flex gap-2">
+        <button class="tab-btn px-3 py-2 rounded-lg border border-[#2a3158] text-[13px]" data-tab="kanban" aria-selected="true">
+          <i class="lucide-layout-list mr-1 text-cyan-200"></i> Kanban
+        </button>
+        <button class="tab-btn px-3 py-2 rounded-lg border border-[#2a3158] text-[13px]" data-tab="calendar">
+          <i class="lucide-calendar mr-1 text-violet-200"></i> Calendar
+        </button>
+        <button class="tab-btn px-3 py-2 rounded-lg border border-[#2a3158] text-[13px]" data-tab="table">
+          <i class="lucide-table mr-1 text-emerald-200"></i> Table
+        </button>
+
+        <div class="ml-auto flex items-center gap-2">
+          <input id="search" placeholder="Search title / campaign..." class="w-64 px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158] text-[13px] outline-none focus:border-cyan-400/50" />
+          <select id="filter-channel" class="px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158] text-[13px] outline-none">
+            <option value="">All Channels</option>
+            <option>LinkedIn</option><option>IG</option><option>TikTok</option><option>Blog</option><option>Newsletter</option><option>YouTube</option>
+          </select>
+          <select id="filter-status" class="px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158] text-[13px] outline-none">
+            <option value="">All Status</option>
+            <option>Backlog</option><option>Briefing</option><option>Draft</option><option>Review</option><option>Approved</option><option>Scheduled</option><option>Published</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="max-w-7xl mx-auto p-4 space-y-6">
+    <!-- Kanban -->
+    <section id="view-kanban" class="grid md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <!-- columns injected by JS -->
+    </section>
+
+    <!-- Calendar -->
+    <section id="view-calendar" class="hidden space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="text-sm text-[var(--muted)]" id="cal-subtitle"></div>
+        <div class="flex items-center gap-2">
+          <button id="cal-prev" class="px-3 py-2 rounded-lg border border-[#2a3158] hover:bg-[#171b2e] text-sm">Prev</button>
+          <button id="cal-today" class="px-3 py-2 rounded-lg border border-[#2a3158] hover:bg-[#171b2e] text-sm">Today</button>
+          <button id="cal-next" class="px-3 py-2 rounded-lg border border-[#2a3158] hover:bg-[#171b2e] text-sm">Next</button>
+        </div>
+      </div>
+      <div id="cal-grid" class="cal-grid"></div>
+      <p class="text-xs text-[var(--muted)]">*Calendar shows by <b>Publish date</b>.</p>
+    </section>
+
+    <!-- Table -->
+    <section id="view-table" class="hidden card p-4 overflow-auto">
+      <table class="min-w-[900px] w-full text-sm">
+        <thead class="text-xs uppercase text-[var(--muted)]">
+          <tr class="border-b border-[#232a4d]">
+            <th class="py-2 text-left">Post title</th>
+            <th class="text-left">Status</th>
+            <th class="text-left">Channel</th>
+            <th class="text-left">Type</th>
+            <th class="text-left">Campaign</th>
+            <th class="text-left">Owner</th>
+            <th class="text-left">Due</th>
+            <th class="text-left">Publish</th>
+            <th class="text-left">Priority</th>
+            <th class="text-left">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- Modal -->
+  <dialog id="modal" class="backdrop:bg-black/50 rounded-2xl w-[min(680px,92vw)] bg-[#0e1223] border border-[#232a4d] text-sm">
+    <form method="dialog" id="form" class="p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 id="modal-title" class="text-base font-semibold">New Item</h3>
+        <button id="btn-close" class="tooltip text-[var(--muted)]" data-tip="Close"><i class="lucide-x"></i></button>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-3">
+        <label class="space-y-1">
+          <span class="text-[13px] text-[var(--muted)]">Post title</span>
+          <input id="f-title" required class="w-full px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158] outline-none" />
+        </label>
+        <label class="space-y-1">
+          <span class="text-[13px] text-[var(--muted)]">Campaign</span>
+          <input id="f-campaign" class="w-full px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158] outline-none" />
+        </label>
+        <label class="space-y-1">
+          <span class="text-[13px] text-[var(--muted)]">Status</span>
+          <select id="f-status" class="w-full px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158]">
+            <option>Backlog</option><option>Briefing</option><option>Draft</option><option>Review</option>
+            <option>Approved</option><option>Scheduled</option><option>Published</option>
+          </select>
+        </label>
+        <label class="space-y-1">
+          <span class="text-[13px] text-[var(--muted)]">Channel</span>
+          <select id="f-channel" class="w-full px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158]">
+            <option>LinkedIn</option><option>IG</option><option>TikTok</option><option>Blog</option><option>Newsletter</option><option>YouTube</option>
+          </select>
+        </label>
+        <label class="space-y-1">
+          <span class="text-[13px] text-[var(--muted)]">Content Type</span>
+          <select id="f-type" class="w-full px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158]">
+            <option>Post</option><option>Carousel</option><option>Video</option><option>Article</option><option>Email</option>
+          </select>
+        </label>
+        <label class="space-y-1">
+          <span class="text-[13px] text-[var(--muted)]">Owner</span>
+          <input id="f-owner" placeholder="Susan" class="w-full px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158]" />
+        </label>
+        <label class="space-y-1">
+          <span class="text-[13px] text-[var(--muted)]">Due date</span>
+          <input id="f-due" type="date" class="w-full px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158]" />
+        </label>
+        <label class="space-y-1">
+          <span class="text-[13px] text-[var(--muted)]">Publish date</span>
+          <input id="f-pub" type="date" class="w-full px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158]" />
+        </label>
+        <label class="space-y-1 md:col-span-2">
+          <span class="text-[13px] text-[var(--muted)]">CTA</span>
+          <input id="f-cta" class="w-full px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158]" />
+        </label>
+        <label class="space-y-1 md:col-span-2">
+          <span class="text-[13px] text-[var(--muted)]">Asset link (Canva/Drive/Loom/etc.)</span>
+          <input id="f-asset" type="url" placeholder="https://..." class="w-full px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158]" />
+        </label>
+        <label class="space-y-1">
+          <span class="text-[13px] text-[var(--muted)]">Priority</span>
+          <select id="f-priority" class="w-full px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158]">
+            <option>P1</option><option selected>P2</option><option>P3</option>
+          </select>
+        </label>
+        <label class="space-y-1 md:col-span-2">
+          <span class="text-[13px] text-[var(--muted)]">Brief / Notes</span>
+          <textarea id="f-notes" rows="4" class="w-full px-3 py-2 rounded-lg bg-[#12162a] border border-[#2a3158]"></textarea>
+        </label>
+      </div>
+
+      <div class="flex items-center justify-between pt-2">
+        <button id="btn-delete" type="button" class="hidden px-3 py-2 rounded-lg border border-[#423042] bg-rose-500/10 text-rose-200">Delete</button>
+        <div class="ml-auto flex gap-2">
+          <button class="px-3 py-2 rounded-lg border border-[#2a3158]">Cancel</button>
+          <button id="btn-save" type="submit" class="px-3 py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-300/40 text-cyan-100">Save</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+<script>
+/* ======================
+   Utility & State
+====================== */
+const $ = (q, el=document)=>el.querySelector(q);
+const $$ = (q, el=document)=>Array.from(el.querySelectorAll(q));
+
+const STORAGE_KEY = 'cmc-items-v1';
+
+const STATUS = ["Backlog","Briefing","Draft","Review","Approved","Scheduled","Published"];
+const CHANNEL = ["LinkedIn","IG","TikTok","Blog","Newsletter","YouTube"];
+const TYPE = ["Post","Carousel","Video","Article","Email"];
+
+let items = load() || seed();
+let editId = null;           // current editing id
+let calCursor = new Date();  // calendar month pointer
+
+function uid(){ return Math.random().toString(36).slice(2,9); }
+function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+function load(){ try{return JSON.parse(localStorage.getItem(STORAGE_KEY))}catch(e){return null} }
+function resetAndSeed(){ items = seed(); save(); renderAll(); }
+
+function seed(){
+  const today = new Date();
+  const d = (off)=>new Date(today.getFullYear(), today.getMonth(), today.getDate()+off).toISOString().slice(0,10);
+  return [
+    {id:uid(), title:"LI – Mini case: +45% inbound", status:"Approved", channel:"LinkedIn", type:"Post", campaign:"Q4 wins", owner:"Susan", due:d(-2), publish:d(1), cta:"Book a discovery", asset:"", priority:"P1", notes:"Mini casepost; include KPI bullets."},
+    {id:uid(), title:"IG – Carousel SOP Inbox Hygiene", status:"Draft", channel:"IG", type:"Carousel", campaign:"Ops Hygiene", owner:"Susan", due:d(3), publish:d(5), cta:"DM 'SOP'", asset:"", priority:"P2", notes:"Use 5–7 slides."},
+    {id:uid(), title:"Blog – GA4 Weekly Deck", status:"Briefing", channel:"Blog", type:"Article", campaign:"Analytics", owner:"Susan", due:d(6), publish:d(9), cta:"Download deck", asset:"", priority:"P2", notes:"Embed Looker dashboard images."},
+    {id:uid(), title:"Email – Ops Tips #01", status:"Backlog", channel:"Newsletter", type:"Email", campaign:"Ops Tips", owner:"Susan", due:"", publish:d(12), cta:"Reply 'TIPS'", asset:"", priority:"P3", notes:"Short tips format."},
+    {id:uid(), title:"Video – Zapier triage demo", status:"Review", channel:"YouTube", type:"Video", campaign:"Automation", owner:"Susan", due:d(-1), publish:d(4), cta:"Try the SOP", asset:"", priority:"P1", notes:"Loom cutdown to 3–4 mins."},
+  ];
+}
+
+/* ======================
+   Renderers
+====================== */
+function renderAll(){
+  renderKanban();
+  renderTable();
+  renderCalendar();
+}
+
+function filteredItems(){
+  const q = $('#search').value.trim().toLowerCase();
+  const ch = $('#filter-channel').value;
+  const st = $('#filter-status').value;
+  return items.filter(it=>{
+    const okQ = !q || (it.title.toLowerCase().includes(q) || (it.campaign||'').toLowerCase().includes(q));
+    const okC = !ch || it.channel===ch;
+    const okS = !st || it.status===st;
+    return okQ && okC && okS;
+  });
+}
+
+/* Kanban */
+function renderKanban(){
+  const wrap = $('#view-kanban');
+  wrap.innerHTML = '';
+  STATUS.forEach(s=>{
+    const col = document.createElement('div');
+    col.className = 'kan-col p-3';
+    col.dataset.status = s;
+    col.innerHTML = `
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-sm font-semibold">${s}</div>
+        <button class="text-[var(--muted)] tooltip" data-tip="Add here" onclick="openModal(null,'${s}')"><i class="lucide-plus"></i></button>
+      </div>
+      <div class="space-y-2 min-h-[80px]" data-col="${s}"></div>
+    `;
+    wrap.appendChild(col);
+  });
+
+  filteredItems().forEach(it=>{
+    const el = document.createElement('div');
+    el.className = 'kan-item p-3';
+    el.innerHTML = `
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="font-medium leading-tight">${escapeHtml(it.title)}</div>
+          <div class="text-[12px] text-[var(--muted)]">${it.channel} • ${it.type} ${it.campaign?`• ${escapeHtml(it.campaign)}`:''}</div>
+        </div>
+        <div class="flex gap-2">
+          ${it.priority? priorityPill(it.priority):''}
+          ${it.publish? datePill(it.publish, 'cyan'):''}
+        </div>
+      </div>
+      <div class="mt-2 flex items-center justify-between text-[12px]">
+        <div class="flex gap-2">
+          ${it.asset? `<a class="pill violet" href="${escapeAttr(it.asset)}" target="_blank"><i class="lucide-link-2 w-3 h-3"></i> asset</a>`:''}
+        </div>
+        <div class="flex gap-2">
+          <button class="pill green" onclick="openModal('${it.id}')"><i class="lucide-pencil w-3 h-3"></i> Edit</button>
+          <button class="pill rose" onclick="delItem('${it.id}')"><i class="lucide-trash-2 w-3 h-3"></i> Del</button>
+        </div>
+      </div>
+    `;
+    $('[data-col="'+it.status+'"]').appendChild(el);
+  });
+}
+
+/* Table */
+function renderTable(){
+  const tb = $('#table-body');
+  tb.innerHTML = '';
+  filteredItems().forEach(it=>{
+    const tr = document.createElement('tr');
+    tr.className = 'border-b border-[#232a4d] hover:bg-[#141935]';
+    tr.innerHTML = `
+      <td class="py-2 pr-3">${escapeHtml(it.title)}</td>
+      <td class="pr-3">${badge(it.status)}</td>
+      <td class="pr-3">${it.channel}</td>
+      <td class="pr-3">${it.type}</td>
+      <td class="pr-3">${escapeHtml(it.campaign||'')}</td>
+      <td class="pr-3">${escapeHtml(it.owner||'')}</td>
+      <td class="pr-3">${fmtDate(it.due)}</td>
+      <td class="pr-3">${fmtDate(it.publish)}</td>
+      <td class="pr-3">${it.priority||''}</td>
+      <td class="pr-3">
+        <button class="pill green" onclick="openModal('${it.id}')"><i class="lucide-pencil w-3 h-3"></i> Edit</button>
+        <button class="pill rose"  onclick="delItem('${it.id}')"><i class="lucide-trash-2 w-3 h-3"></i> Del</button>
+      </td>
+    `;
+    tb.appendChild(tr);
+  });
+}
+
+/* Calendar (simple month grid by Publish date) */
+function renderCalendar(){
+  const grid = $('#cal-grid');
+  const y = calCursor.getFullYear(), m = calCursor.getMonth();
+  const first = new Date(y, m, 1);
+  const startDay = first.getDay(); // 0..6
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  $('#cal-subtitle').textContent = first.toLocaleString('en-US', {month:'long', year:'numeric'});
+
+  // collect by publish date
+  const map = {};
+  filteredItems().forEach(it=>{
+    if(!it.publish) return;
+    const d = new Date(it.publish);
+    if(d.getMonth()===m && d.getFullYear()===y){
+      const day = d.getDate();
+      (map[day] ||= []).push(it);
+    }
+  });
+
+  grid.innerHTML = '';
+  // week day headers
+  ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(name=>{
+    const h = document.createElement('div');
+    h.className = 'text-center text-[12px] text-[var(--muted)] mb-1';
+    h.textContent = name;
+    grid.appendChild(h);
+  });
+  // blanks
+  for(let i=0;i<startDay;i++){
+    const c = document.createElement('div'); c.className='cal-cell opacity-40'; grid.appendChild(c);
+  }
+  // days
+  for(let d=1; d<=daysInMonth; d++){
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell';
+    cell.innerHTML = `<div class="d">${d}</div><div class="mt-1 space-y-1" id="cal-day-${d}"></div>`;
+    grid.appendChild(cell);
+    (map[d]||[]).forEach(it=>{
+      const a = document.createElement('a');
+      a.href = 'javascript:void(0)';
+      a.onclick = ()=>openModal(it.id);
+      a.className = 'pill cyan block w-full truncate';
+      a.innerHTML = `<i class="lucide-megaphone w-3 h-3"></i> ${escapeHtml(it.title)}`;
+      $('#cal-day-'+d).appendChild(a);
+    });
+  }
+}
+
+/* helpers */
+function datePill(date, color='cyan'){
+  if(!date) return '';
+  return `<span class="pill ${color}">
+    <i class="lucide-calendar w-3 h-3"></i>${fmtDate(date)}
+  </span>`;
+}
+function priorityPill(p){
+  const c = p==='P1' ? 'rose' : p==='P2' ? 'amber' : 'violet';
+  return `<span class="pill ${c}">${p}</span>`;
+}
+function badge(s){
+  const color = {
+    Backlog:'violet', Briefing:'amber', Draft:'amber', Review:'amber',
+    Approved:'green', Scheduled:'cyan', Published:'green'
+  }[s] || 'violet';
+  return `<span class="pill ${color}">${s}</span>`;
+}
+function fmtDate(v){ if(!v) return ''; const d=new Date(v+'T00:00'); return d.toLocaleDateString('en-GB'); }
+function escapeHtml(s){ return (s??'').toString().replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])) }
+function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;') }
+
+/* ======================
+   Modal (Create / Edit)
+====================== */
+function openModal(id, presetStatus=null){
+  editId = id || null;
+  $('#modal-title').textContent = id ? 'Edit Item' : 'New Item';
+  $('#btn-delete').classList.toggle('hidden', !id);
+
+  if(id){
+    const it = items.find(x=>x.id===id);
+    $('#f-title').value=it.title; $('#f-campaign').value=it.campaign||'';
+    $('#f-status').value=it.status; $('#f-channel').value=it.channel; $('#f-type').value=it.type;
+    $('#f-owner').value=it.owner||''; $('#f-due').value=it.due||''; $('#f-pub').value=it.publish||'';
+    $('#f-cta').value=it.cta||''; $('#f-asset').value=it.asset||''; $('#f-priority').value=it.priority||'P2';
+    $('#f-notes').value=it.notes||'';
+  }else{
+    $('#f-title').value=''; $('#f-campaign').value='';
+    $('#f-status').value=presetStatus||'Backlog'; $('#f-channel').value='LinkedIn'; $('#f-type').value='Post';
+    $('#f-owner').value='Susan'; $('#f-due').value=''; $('#f-pub').value='';
+    $('#f-cta').value=''; $('#f-asset').value=''; $('#f-priority').value='P2';
+    $('#f-notes').value='';
+  }
+  $('#modal').showModal();
+}
+
+$('#btn-close').onclick = ()=>$('#modal').close();
+
+$('#form').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  const data = {
+    title:$('#f-title').value.trim(),
+    campaign:$('#f-campaign').value.trim(),
+    status:$('#f-status').value,
+    channel:$('#f-channel').value,
+    type:$('#f-type').value,
+    owner:$('#f-owner').value.trim(),
+    due:$('#f-due').value,
+    publish:$('#f-pub').value,
+    cta:$('#f-cta').value.trim(),
+    asset:$('#f-asset').value.trim(),
+    priority:$('#f-priority').value,
+    notes:$('#f-notes').value.trim(),
+  };
+  if(editId){
+    const idx = items.findIndex(x=>x.id===editId);
+    items[idx] = {...items[idx], ...data};
+  }else{
+    items.unshift({id:uid(), ...data});
+  }
+  save(); $('#modal').close(); renderAll();
+});
+
+$('#btn-delete').onclick = ()=>{
+  if(!editId) return;
+  if(confirm('Delete this item?')){
+    items = items.filter(x=>x.id!==editId);
+    save(); $('#modal').close(); renderAll();
+  }
+}
+
+/* ======================
+   Top controls
+====================== */
+$('#btn-new').onclick = ()=>openModal();
+$('#search').oninput = renderAll;
+$('#filter-channel').onchange = renderAll;
+$('#filter-status').onchange = renderAll;
+
+$$('.tab-btn').forEach(btn=>{
+  btn.onclick = ()=>{
+    const name = btn.dataset.tab;
+    $$('.tab-btn').forEach(b=>b.setAttribute('aria-selected', b===btn));
+    $('#view-kanban').classList.toggle('hidden', name!=='kanban');
+    $('#view-calendar').classList.toggle('hidden', name!=='calendar');
+    $('#view-table').classList.toggle('hidden', name!=='table');
+    if(name==='calendar') renderCalendar();
+  }
+});
+
+/* Calendar nav */
+$('#cal-prev').onclick = ()=>{ calCursor.setMonth(calCursor.getMonth()-1); renderCalendar(); }
+$('#cal-next').onclick = ()=>{ calCursor.setMonth(calCursor.getMonth()+1); renderCalendar(); }
+$('#cal-today').onclick= ()=>{ calCursor = new Date(); renderCalendar(); }
+
+/* Export / Import */
+$('#btn-export').onclick = ()=>{
+  const blob = new Blob([JSON.stringify(items,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'content-master-calendar.json';
+  a.click(); URL.revokeObjectURL(a.href);
+};
+$('#import-file').onchange = (e)=>{
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{ try{ items = JSON.parse(r.result); save(); renderAll(); }catch(err){ alert('Invalid JSON'); } };
+  r.readAsText(f);
+};
+
+/* init */
+renderAll();
+</script>
+</body>
+</html>
